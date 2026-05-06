@@ -77,7 +77,7 @@ func (cm *ChatModel) buildParams(in []*schema.Message, stream bool, opts ...mode
 	cbTools := cm.rawTools
 	if common.Tools != nil {
 		var err error
-		tools, cbTools, err = toOpenAITools(common.Tools)
+		tools, cbTools, err = toOpenAITools(common.Tools, cm.strictTools)
 		if err != nil {
 			return responses.ResponseNewParams{}, nil, err
 		}
@@ -358,7 +358,16 @@ func populateToolChoice(params *responses.ResponseNewParams, tc *schema.ToolChoi
 	}
 }
 
-func toOpenAITools(tis []*schema.ToolInfo) ([]responses.ToolUnionParam, []*schema.ToolInfo, error) {
+// toOpenAITools converts eino tool definitions into OpenAI Responses API
+// function tools. When strict is true, parameter schemas are rewritten to
+// satisfy OpenAI's strict-mode requirements (every property in `required`,
+// `additionalProperties:false`, no opaque objects) and each tool is sent
+// with `Strict: true` so the model's emitted arguments match the schema
+// exactly. When strict is false, schemas are passed through untouched and
+// `Strict` is left unset, allowing tools with shapes that can't be made
+// strict (opaque JSON, optional fields, free-form queries) at the cost of
+// weaker model adherence.
+func toOpenAITools(tis []*schema.ToolInfo, strict bool) ([]responses.ToolUnionParam, []*schema.ToolInfo, error) {
 	tools := make([]responses.ToolUnionParam, len(tis))
 	rawTools := make([]*schema.ToolInfo, len(tis))
 	copy(rawTools, tis)
@@ -375,14 +384,16 @@ func toOpenAITools(tis []*schema.ToolInfo) ([]responses.ToolUnionParam, []*schem
 		if err != nil {
 			return nil, nil, err
 		}
-		enforceOpenAIStrictJSONSchema(paramsMap)
-		t := responses.ToolUnionParam{OfFunction: &responses.FunctionToolParam{
+		fn := &responses.FunctionToolParam{
 			Name:        ti.Name,
 			Description: openai.String(ti.Desc),
 			Parameters:  paramsMap,
-			Strict:      openai.Bool(true),
-		}}
-		tools[i] = t
+		}
+		if strict {
+			enforceOpenAIStrictJSONSchema(paramsMap)
+			fn.Strict = openai.Bool(true)
+		}
+		tools[i] = responses.ToolUnionParam{OfFunction: fn}
 	}
 	return tools, rawTools, nil
 }
