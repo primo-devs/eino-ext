@@ -431,7 +431,7 @@ func TestPopulateToolChoice(t *testing.T) {
 
 func TestToOpenAITools(t *testing.T) {
 	weatherTool := makeWeatherTool()
-	tools, rawTools, err := toOpenAITools([]*schema.ToolInfo{weatherTool})
+	tools, rawTools, err := toOpenAITools([]*schema.ToolInfo{weatherTool}, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -448,21 +448,20 @@ func TestToOpenAITools(t *testing.T) {
 	if fn.Name != weatherTool.Name || !fn.Strict.Value {
 		t.Fatalf("unexpected function tool: %#v", fn)
 	}
-	props, ok := fn.Parameters["properties"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected properties map in parameters: %#v", fn.Parameters)
-	}
-	if _, ok := props["city"]; !ok {
-		t.Fatalf("expected city property, got %#v", props)
-	}
-	if fn.Parameters["type"] != "object" || fn.Parameters["additionalProperties"] != false {
-		t.Fatalf("expected strict object schema, got %#v", fn.Parameters)
-	}
-	if required, ok := fn.Parameters["required"].([]any); !ok || len(required) == 0 {
-		t.Fatalf("expected required fields, got %#v", fn.Parameters["required"])
+	if fn.Parameters["additionalProperties"] != false {
+		t.Fatalf("expected strict-mode rewrite to set additionalProperties:false, got %#v", fn.Parameters)
 	}
 
-	if _, _, err := toOpenAITools([]*schema.ToolInfo{nil}); err == nil || !strings.Contains(err.Error(), "cannot be nil") {
+	// Non-strict mode: Strict left unset, schema not rewritten.
+	loose, _, err := toOpenAITools([]*schema.ToolInfo{weatherTool}, false)
+	if err != nil {
+		t.Fatalf("unexpected error in non-strict mode: %v", err)
+	}
+	if loose[0].OfFunction.Strict.Valid() {
+		t.Fatalf("expected Strict to be unset in non-strict mode, got %#v", loose[0].OfFunction.Strict)
+	}
+
+	if _, _, err := toOpenAITools([]*schema.ToolInfo{nil}, true); err == nil || !strings.Contains(err.Error(), "cannot be nil") {
 		t.Fatalf("expected nil tool error, got %v", err)
 	}
 }

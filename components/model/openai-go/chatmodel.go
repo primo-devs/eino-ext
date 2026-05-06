@@ -74,6 +74,19 @@ type Config struct {
 	// ExtraFields will override any existing fields with the same key.
 	// Optional. Useful for experimental features not yet officially supported.
 	ExtraFields map[string]any `json:"extra_fields,omitempty"`
+
+	// StrictTools controls JSON-schema enforcement on function tools sent
+	// to OpenAI. When nil (default) or true, tool parameter schemas are
+	// rewritten to satisfy OpenAI's strict-mode requirements (every
+	// property in `required`, `additionalProperties:false`, no opaque
+	// objects), and each tool is sent with `Strict: true`, so the model's
+	// emitted arguments are guaranteed to match the schema. Set to a
+	// pointer to false to opt out: schemas are passed through untouched
+	// and `Strict` is left unset, allowing callers to register tools whose
+	// schemas can't or shouldn't be made strict (jq queries as opaque
+	// strings, free-form metadata, optional fields, etc.). Trade-off:
+	// weaker model adherence to the declared schema.
+	StrictTools *bool `json:"strict_tools,omitempty"`
 }
 
 type ChatModel struct {
@@ -87,6 +100,7 @@ type ChatModel struct {
 	store       *bool
 	metadata    map[string]string
 	extraFields map[string]any
+	strictTools bool
 
 	tools      []responses.ToolUnionParam
 	rawTools   []*schema.ToolInfo
@@ -113,6 +127,12 @@ func NewChatModel(_ context.Context, config *Config) (*ChatModel, error) {
 
 	cli := openai.NewClient(opts...)
 
+	// Default strict on (preserves upstream behavior); explicit *false opts out.
+	strictTools := true
+	if config.StrictTools != nil {
+		strictTools = *config.StrictTools
+	}
+
 	cm := &ChatModel{
 		cli:         cli,
 		model:       config.Model,
@@ -123,6 +143,7 @@ func NewChatModel(_ context.Context, config *Config) (*ChatModel, error) {
 		store:       config.Store,
 		metadata:    cloneStringMap(config.Metadata),
 		extraFields: cloneAnyMap(config.ExtraFields),
+		strictTools: strictTools,
 	}
 
 	return cm, nil
@@ -169,7 +190,7 @@ func (cm *ChatModel) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatM
 	if len(tools) == 0 {
 		return nil, errors.New("no tools to bind")
 	}
-	openAITools, rawTools, err := toOpenAITools(tools)
+	openAITools, rawTools, err := toOpenAITools(tools, cm.strictTools)
 	if err != nil {
 		return nil, err
 	}
