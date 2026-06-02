@@ -364,7 +364,7 @@ func populateToolChoice(params *responses.ResponseNewParams, tc *schema.ToolChoi
 // `additionalProperties:false`, no opaque objects) and each tool is sent
 // with `Strict: true` so the model's emitted arguments match the schema
 // exactly. When strict is false, schemas are passed through untouched and
-// `Strict` is left unset, allowing tools with shapes that can't be made
+// each tool is sent with `Strict: false`, allowing tools with shapes that can't be made
 // strict (opaque JSON, optional fields, free-form queries) at the cost of
 // weaker model adherence.
 func toOpenAITools(tis []*schema.ToolInfo, strict bool) ([]responses.ToolUnionParam, []*schema.ToolInfo, error) {
@@ -392,6 +392,8 @@ func toOpenAITools(tis []*schema.ToolInfo, strict bool) ([]responses.ToolUnionPa
 		if strict {
 			enforceOpenAIStrictJSONSchema(paramsMap)
 			fn.Strict = openai.Bool(true)
+		} else {
+			fn.Strict = openai.Bool(false)
 		}
 		tools[i] = responses.ToolUnionParam{OfFunction: fn}
 	}

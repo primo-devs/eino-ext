@@ -452,13 +452,13 @@ func TestToOpenAITools(t *testing.T) {
 		t.Fatalf("expected strict-mode rewrite to set additionalProperties:false, got %#v", fn.Parameters)
 	}
 
-	// Non-strict mode: Strict left unset, schema not rewritten.
+	// Non-strict mode: Strict is explicitly false, schema not rewritten.
 	loose, _, err := toOpenAITools([]*schema.ToolInfo{weatherTool}, false)
 	if err != nil {
 		t.Fatalf("unexpected error in non-strict mode: %v", err)
 	}
-	if loose[0].OfFunction.Strict.Valid() {
-		t.Fatalf("expected Strict to be unset in non-strict mode, got %#v", loose[0].OfFunction.Strict)
+	if !loose[0].OfFunction.Strict.Valid() || loose[0].OfFunction.Strict.Value {
+		t.Fatalf("expected Strict to be false in non-strict mode, got %#v", loose[0].OfFunction.Strict)
 	}
 
 	if _, _, err := toOpenAITools([]*schema.ToolInfo{nil}, true); err == nil || !strings.Contains(err.Error(), "cannot be nil") {
