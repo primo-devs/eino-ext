@@ -226,6 +226,29 @@ func TestStreamStateConsume(t *testing.T) {
 		if err != nil || msg != nil || done || !deltaOnly {
 			t.Fatalf("expected empty summary delta to be ignored: msg=%#v done=%v deltaOnly=%v err=%v", msg, done, deltaOnly, err)
 		}
+
+		// A second reasoning item in the same response (e.g. a consecutive tool
+		// call) restarts summary_index at 0 under a new item_id. The separator
+		// must still be emitted so its summary does not glue onto the first.
+		msg, done, deltaOnly, err = s.consume(mustJSON[responses.ResponseStreamEventUnion](t, map[string]any{
+			"type":          "response.reasoning_summary_part.added",
+			"item_id":       "rs_2",
+			"summary_index": 0,
+			"part":          map[string]any{"type": "summary_text", "text": ""},
+		}))
+		if err != nil || done || !deltaOnly || msg == nil || msg.ReasoningContent != "\n\n" {
+			t.Fatalf("unexpected separator for second reasoning item: msg=%#v done=%v deltaOnly=%v err=%v", msg, done, deltaOnly, err)
+		}
+
+		msg, done, deltaOnly, err = s.consume(mustJSON[responses.ResponseStreamEventUnion](t, map[string]any{
+			"type":          "response.reasoning_summary_text.delta",
+			"item_id":       "rs_2",
+			"summary_index": 0,
+			"delta":         "Reconsidering the plan",
+		}))
+		if err != nil || done || !deltaOnly || msg == nil || msg.ReasoningContent != "Reconsidering the plan" {
+			t.Fatalf("unexpected second item summary delta: msg=%#v done=%v deltaOnly=%v err=%v", msg, done, deltaOnly, err)
+		}
 	})
 
 	t.Run("error and unknown events", func(t *testing.T) {

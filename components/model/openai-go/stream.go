@@ -117,6 +117,11 @@ type streamState struct {
 	functionArgBufs map[string]*strings.Builder // key: item_id
 	callIDByItemID  map[string]string
 	nameByItemID    map[string]string
+	// startedSummary is set once the first reasoning summary part opens. A
+	// single response can carry several reasoning items (one per consecutive
+	// tool call), each restarting summary_index at 0, so the part separator
+	// keys off "any part after the first in this stream", not summary_index.
+	startedSummary bool
 }
 
 func newStreamState() *streamState {
@@ -158,10 +163,14 @@ func (s *streamState) consume(ev responses.ResponseStreamEventUnion) (msg *schem
 		// arrive in several parts, each opened by its own part.added event. The
 		// non-streaming path joins parts with a blank line (joinReasoningText),
 		// so mirror that here by emitting the separator before every part after
-		// the first. The summary text itself streams via the delta event below.
-		if v.SummaryIndex > 0 {
+		// the first. Track that across the whole stream rather than via
+		// summary_index, because a response can contain multiple reasoning
+		// items (one per consecutive tool call) and summary_index restarts at 0
+		// for each. The summary text itself streams via the delta event below.
+		if s.startedSummary {
 			return &schema.Message{Role: schema.Assistant, ReasoningContent: "\n\n"}, false, true, nil
 		}
+		s.startedSummary = true
 		return nil, false, true, nil
 	case responses.ResponseReasoningSummaryTextDeltaEvent:
 		// Distinct from ResponseReasoningTextDeltaEvent (raw chain-of-thought):
