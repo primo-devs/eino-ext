@@ -170,6 +170,64 @@ func TestStreamStateConsume(t *testing.T) {
 		}
 	})
 
+	t.Run("reasoning summary across parts", func(t *testing.T) {
+		s := newStreamState()
+
+		// First part: no separator, just the streamed summary text.
+		msg, done, deltaOnly, err := s.consume(mustJSON[responses.ResponseStreamEventUnion](t, map[string]any{
+			"type":          "response.reasoning_summary_part.added",
+			"item_id":       "rs_1",
+			"summary_index": 0,
+			"part":          map[string]any{"type": "summary_text", "text": ""},
+		}))
+		if err != nil || msg != nil || done || !deltaOnly {
+			t.Fatalf("unexpected first part.added result: msg=%#v done=%v deltaOnly=%v err=%v", msg, done, deltaOnly, err)
+		}
+
+		msg, done, deltaOnly, err = s.consume(mustJSON[responses.ResponseStreamEventUnion](t, map[string]any{
+			"type":          "response.reasoning_summary_text.delta",
+			"item_id":       "rs_1",
+			"summary_index": 0,
+			"delta":         "Investigating the error",
+		}))
+		if err != nil || done || !deltaOnly || msg == nil || msg.ReasoningContent != "Investigating the error" {
+			t.Fatalf("unexpected first summary delta: msg=%#v done=%v deltaOnly=%v err=%v", msg, done, deltaOnly, err)
+		}
+
+		// Second part: a blank-line separator precedes the new part's text,
+		// matching how the non-streaming path joins summary parts.
+		msg, done, deltaOnly, err = s.consume(mustJSON[responses.ResponseStreamEventUnion](t, map[string]any{
+			"type":          "response.reasoning_summary_part.added",
+			"item_id":       "rs_1",
+			"summary_index": 1,
+			"part":          map[string]any{"type": "summary_text", "text": ""},
+		}))
+		if err != nil || done || !deltaOnly || msg == nil || msg.ReasoningContent != "\n\n" {
+			t.Fatalf("unexpected second part.added separator: msg=%#v done=%v deltaOnly=%v err=%v", msg, done, deltaOnly, err)
+		}
+
+		msg, done, deltaOnly, err = s.consume(mustJSON[responses.ResponseStreamEventUnion](t, map[string]any{
+			"type":          "response.reasoning_summary_text.delta",
+			"item_id":       "rs_1",
+			"summary_index": 1,
+			"delta":         "Confirming the fix",
+		}))
+		if err != nil || done || !deltaOnly || msg == nil || msg.ReasoningContent != "Confirming the fix" {
+			t.Fatalf("unexpected second summary delta: msg=%#v done=%v deltaOnly=%v err=%v", msg, done, deltaOnly, err)
+		}
+
+		// Empty summary deltas are dropped, like empty text deltas.
+		msg, done, deltaOnly, err = s.consume(mustJSON[responses.ResponseStreamEventUnion](t, map[string]any{
+			"type":          "response.reasoning_summary_text.delta",
+			"item_id":       "rs_1",
+			"summary_index": 1,
+			"delta":         "",
+		}))
+		if err != nil || msg != nil || done || !deltaOnly {
+			t.Fatalf("expected empty summary delta to be ignored: msg=%#v done=%v deltaOnly=%v err=%v", msg, done, deltaOnly, err)
+		}
+	})
+
 	t.Run("error and unknown events", func(t *testing.T) {
 		s := newStreamState()
 		msg, done, deltaOnly, err := s.consume(mustJSON[responses.ResponseStreamEventUnion](t, map[string]any{

@@ -153,6 +153,24 @@ func (s *streamState) consume(ev responses.ResponseStreamEventUnion) (msg *schem
 		}
 		m := &schema.Message{Role: schema.Assistant, ReasoningContent: v.Delta}
 		return m, false, true, nil
+	case responses.ResponseReasoningSummaryPartAddedEvent:
+		// A reasoning summary (reasoning.summary = auto/concise/detailed) can
+		// arrive in several parts, each opened by its own part.added event. The
+		// non-streaming path joins parts with a blank line (joinReasoningText),
+		// so mirror that here by emitting the separator before every part after
+		// the first. The summary text itself streams via the delta event below.
+		if v.SummaryIndex > 0 {
+			return &schema.Message{Role: schema.Assistant, ReasoningContent: "\n\n"}, false, true, nil
+		}
+		return nil, false, true, nil
+	case responses.ResponseReasoningSummaryTextDeltaEvent:
+		// Distinct from ResponseReasoningTextDeltaEvent (raw chain-of-thought):
+		// this carries the opt-in reasoning summary. Surface it on the same
+		// ReasoningContent field so consumers see one assembled summary.
+		if v.Delta == "" {
+			return nil, false, true, nil
+		}
+		return &schema.Message{Role: schema.Assistant, ReasoningContent: v.Delta}, false, true, nil
 	case responses.ResponseOutputItemAddedEvent:
 		// function call item appears here with call_id and name
 		item := v.Item
