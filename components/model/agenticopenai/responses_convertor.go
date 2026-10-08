@@ -738,11 +738,18 @@ func functionToolResultContentToOutput(content []*schema.FunctionToolResultConte
 			if err != nil {
 				return responses.ResponseInputItemFunctionCallOutputOutputUnionParam{}, err
 			}
+			fileParam := &responses.ResponseInputFileContentParam{
+				Filename: newOpenaiStrOpt(block.File.Name),
+			}
+			// file_url is for external URLs; inline bytes go in file_data as a data URL.
+			// Some Responses endpoints (e.g. Amazon Bedrock) reject a data URL in file_url.
+			if block.File.URL != "" {
+				fileParam.FileURL = newOpenaiStrOpt(fileURL)
+			} else {
+				fileParam.FileData = newOpenaiStrOpt(fileURL)
+			}
 			items = append(items, responses.ResponseFunctionCallOutputItemUnionParam{
-				OfInputFile: &responses.ResponseInputFileContentParam{
-					FileURL:  newOpenaiStrOpt(fileURL),
-					Filename: newOpenaiStrOpt(block.File.Name),
-				},
+				OfInputFile: fileParam,
 			})
 
 		default:
