@@ -2074,3 +2074,34 @@ func TestPairImageGenerationToolCallItems(t *testing.T) {
 		})
 	})
 }
+
+func TestFunctionToolResultFileToInputItem(t *testing.T) {
+	mockey.PatchConvey("functionToolResultContentToOutput file", t, func() {
+		mockey.PatchConvey("base64", func() {
+			out, err := functionToolResultContentToOutput([]*schema.FunctionToolResultContentBlock{
+				{Type: schema.FunctionToolResultContentBlockTypeFile, File: &schema.UserInputFile{Base64Data: "abc", MIMEType: "application/pdf", Name: "a.pdf"}},
+			})
+			assert.NoError(t, err)
+			if assert.Len(t, out.OfResponseFunctionCallOutputItemArray, 1) {
+				f := out.OfResponseFunctionCallOutputItemArray[0].OfInputFile
+				assert.NotNil(t, f)
+				assert.Equal(t, "data:application/pdf;base64,abc", f.FileData.Value)
+				assert.False(t, f.FileURL.Valid())
+				assert.Equal(t, "a.pdf", f.Filename.Value)
+			}
+		})
+
+		mockey.PatchConvey("url", func() {
+			out, err := functionToolResultContentToOutput([]*schema.FunctionToolResultContentBlock{
+				{Type: schema.FunctionToolResultContentBlockTypeFile, File: &schema.UserInputFile{URL: "https://f", Name: "a.pdf"}},
+			})
+			assert.NoError(t, err)
+			if assert.Len(t, out.OfResponseFunctionCallOutputItemArray, 1) {
+				f := out.OfResponseFunctionCallOutputItemArray[0].OfInputFile
+				assert.NotNil(t, f)
+				assert.Equal(t, "https://f", f.FileURL.Value)
+				assert.False(t, f.FileData.Valid())
+			}
+		})
+	})
+}
